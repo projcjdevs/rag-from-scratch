@@ -1,0 +1,15 @@
+Cats are independent animals that often sleep up to 16 hours a day.
+Dogs are loyal companions known for their playful and social nature.
+Kittens are young cats that are curious and love to explore.
+Puppies are baby dogs that require a lot of training and attention.
+A microprocessor is the central unit of a computer that executes instructions.
+The CPU processes billions of instructions per second using transistors.
+GPUs are specialized processors originally designed for rendering graphics.
+Machine learning models are trained on large datasets to recognize patterns.
+Neural networks are computing systems loosely inspired by biological brains.
+RAG stands for Retrieval Augmented Generation, combining search with language models.
+Vector databases store embeddings and support fast similarity search.
+K-Means clustering groups data points into K clusters based on proximity.
+Cosine similarity measures the angle between two vectors in high-dimensional space.
+Graph databases store data as nodes and edges representing relationships.
+The adjacency matrix represents a graph as a mathematical matrix of connections.
