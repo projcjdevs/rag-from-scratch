@@ -2,24 +2,21 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sentence_transformers import SentenceTransformer
 
-class LightweightAG:
-
+class LightweightRAG:
     def __init__(self, model_name="all-MiniLM-L6-v2", n_clusters=3):
-
-        self.model = SentenceTransformer(model_name)
-        self.n_clusters = n_clusters
-
-        self.documents = []
-        self.embeddings = None
-        self.centroids = None
-        self.assignments = None
-        self.adj_matrix = None
+        self.model       = SentenceTransformer(model_name)
+        self.n_clusters  = n_clusters
+        self.documents   = []
+        self.embeddings  = None  
+        self.centroids   = None  
+        self.assignments = None   
+        self.adj_matrix  = None  
 
         print(f"LightweightRAG ready")
         print(f"  model:      {model_name}")
         print(f"  n_clusters: {n_clusters}")
 
-    # Math Utilities (Sprint 1 & 2)
+    # Math Utilities (Sprints 1 & 2)
 
     def _l2_norm(self, v):
         return np.sqrt(np.sum(v ** 2))
@@ -39,13 +36,15 @@ class LightweightAG:
                     embeddings[i], embeddings[j]
                 )
         return matrix
-    
-    # K-means clustering (Sprint 4)
+
+    # K-Means Clustering (Sprint 4)
+
     def _kmeans(self, vectors, max_iters=100, tol=1e-4):
-        n, d   = vectors.shape
-        k      = self.n_clusters
-        idx       = np.random.choice(n, k, replace=False)
-        centroids = vectors[idx].copy()
+        n, d = vectors.shape
+        k    = self.n_clusters
+
+        idx         = np.random.choice(n, k, replace=False)
+        centroids   = vectors[idx].copy()
         assignments = np.zeros(n, dtype=int)
 
         for iteration in range(max_iters):
@@ -78,9 +77,9 @@ class LightweightAG:
     # Graph Utilities (Sprint 5)
 
     def _build_adjacency(self, embeddings, threshold=0.75):
-        n      = len(embeddings)
-        sim    = self._similarity_matrix(embeddings)
-        adj    = np.zeros((n, n), dtype=int)
+        n   = len(embeddings)
+        sim = self._similarity_matrix(embeddings)
+        adj = np.zeros((n, n), dtype=int)
 
         for i in range(n):
             for j in range(n):
@@ -100,9 +99,9 @@ class LightweightAG:
         for hop in range(1, hops + 1):
             A_power = A_power @ self.adj_matrix
             for j in range(n):
-                if j != query_node and \
-                   A_power[query_node, j] > 0 and \
-                   j not in reachable:
+                if (j != query_node and
+                        A_power[query_node, j] > 0 and
+                        j not in reachable):
                     reachable[j] = hop
 
         return reachable
@@ -110,17 +109,14 @@ class LightweightAG:
     # Indexing
 
     def index(self, documents, adj_threshold=0.75):
-
         print(f"\nIndexing {len(documents)} documents...")
         self.documents = documents
 
         print("  Embedding...")
-        raw = self.model.encode(documents, show_progress_bar=True)
+        raw = self.model.encode(documents)
 
         print("  Normalizing...")
-        self.embeddings = np.array([
-            self._normalize(v) for v in raw
-        ])
+        self.embeddings = np.array([self._normalize(v) for v in raw])
 
         print("  Clustering...")
         self.centroids, self.assignments = self._kmeans(self.embeddings)
@@ -131,61 +127,64 @@ class LightweightAG:
         )
 
         print(f"\nIndex ready — {len(documents)} documents across "
-            f"{self.n_clusters} clusters\n")
-        
-    # Vector Search
+              f"{self.n_clusters} clusters\n")
+
+    # Vector Search  (Sprints 2 & 4)
 
     def search(self, query, top_k=3, use_ivf=True):
         raw_query = self.model.encode([query])[0]
         query_vec = self._normalize(raw_query)
 
         if use_ivf:
-            centroid_dists = np.sqrt(
+            centroid_dists  = np.sqrt(
                 np.sum((self.centroids - query_vec) ** 2, axis=1)
             )
             nearest_cluster = np.argmin(centroid_dists)
 
-            mask = self.assignments == nearest_cluster
+            mask    = self.assignments == nearest_cluster
             indices = np.where(mask)[0]
-            pool = self.embeddings[mask]
+            pool    = self.embeddings[mask]
 
         else:
-            indices = np.arange(len(self.embeddings))
-            pool = self.embeddings
+            indices = np.arange(len(self.documents))
+            pool    = self.embeddings
 
-        scores = np.array([
+        scores     = np.array([
             self._cosine_similarity(query_vec, doc_vec)
             for doc_vec in pool
         ])
-        top_local = np.argsort(scores)[::-1][:top_k]
+        top_local  = np.argsort(scores)[::-1][:top_k]
         top_global = indices[top_local]
 
         return [
-            (self.documents[i], float(scores[top_local[j]]))
-            for j, i in enumerate(top_global)
+            (self.documents[i], float(scores[top_local[rank]]))
+            for rank, i in enumerate(top_global)
         ]
-    
-    # Hybrid Search
-    def graph_search(self, query, top_k=3, hops=2):
-        seed_results = self.search(query, top_k=top_k, use_ivf=False)
-        seed_doc = seed_results[0][0]
-        seed_index = self.documents.index(seed_doc)
 
-        print(f"  Seed document: \"{seed_doc[:60]}...\"" 
-            if len(seed_doc) > 60 else f"  Seed: \"{seed_doc}\"")
-        
-        reachable = self._graph_traverse(seed_index, hops=hops)
+    # Hybrid Search  (Sprint 5)
+
+    def graph_search(self, query, top_k=3, hops=2):
+        seed_results = self.search(query, top_k=1, use_ivf=False)
+        seed_doc     = seed_results[0][0]
+        seed_index   = self.documents.index(seed_doc)
+
+        label = seed_doc[:60] + "..." if len(seed_doc) > 60 else seed_doc
+        print(f"  Seed document: \"{label}\"")
+
+        reachable  = self._graph_traverse(seed_index, hops=hops)
         candidates = {seed_index: 0, **reachable}
 
         print(f"  Graph expanded to {len(candidates)} candidates "
-            f"({hops}-hop neighbourhood)")
-        
+              f"({hops}-hop neighbourhood)")
+
         raw_query = self.model.encode([query])[0]
         query_vec = self._normalize(raw_query)
 
-        ranked =sorted(
+        ranked = sorted(
             [
-                (idx, self._cosine_similarity(query_vec, self.embeddings[idx]))
+                (idx, self._cosine_similarity(
+                    query_vec, self.embeddings[idx]
+                ))
                 for idx in candidates
             ],
             key=lambda x: x[1],
@@ -193,10 +192,10 @@ class LightweightAG:
         )
 
         return [
-            (self.documents[idx], float(score))
-            for idx, score in ranked[:top_k]
+            (self.documents[i], float(score))
+            for i, score in ranked[:top_k]
         ]
-        
+
     # Visualization (Sprint 3)
 
     def visualise(self, query=None, highlight_indices=None):
@@ -215,21 +214,16 @@ class LightweightAG:
 
         for i, (x, y) in enumerate(coords_2d):
             c = colors[i]
-            size = 160
-            alpha = 0.85
-
             if highlight_indices and i in highlight_indices:
                 ax.scatter(x, y, s=320, color=c, zorder=5,
                            edgecolors="black", linewidths=2)
             else:
-                ax.scatter(x, y, s=size, color=c,
-                           alpha=alpha, zorder=3)
+                ax.scatter(x, y, s=160, color=c, alpha=0.85, zorder=3)
 
             label = (self.documents[i][:32] + "..."
                      if len(self.documents[i]) > 32
                      else self.documents[i])
-            ax.annotate(label, (x, y),
-                        fontsize=7, alpha=0.8,
+            ax.annotate(label, (x, y), fontsize=7, alpha=0.8,
                         xytext=(5, 5), textcoords="offset points")
 
         if query:
@@ -237,17 +231,19 @@ class LightweightAG:
             q_vec = self._normalize(raw)
             q_centered = q_vec - np.mean(X, axis=0)
             q_2d  = q_centered @ eigvecs[:, :2]
-            ax.scatter(*q_2d, s=400, color="black",
-                       marker="*", zorder=6, label=f"Query: '{query}'")
+            ax.scatter(*q_2d, s=400, color="black", marker="*",
+                       zorder=6, label=f"Query: '{query}'")
             ax.legend(fontsize=9)
 
-        ax.set_title("LightweightRAG — Document Space (PCA 2D projection)\n"
-                     "colours = clusters, ★ = query",
-                     fontsize=11)
+        ax.set_title(
+            "LightweightRAG — Document Space (PCA 2D projection)\n"
+            "colours = clusters  |  bold border = top results  |  ★ = query",
+            fontsize=11
+        )
         ax.set_xlabel("PC1", fontsize=10)
         ax.set_ylabel("PC2", fontsize=10)
         ax.grid(True, alpha=0.12)
         plt.tight_layout()
-        plt.savefig("../data/rag_visualisation.png",
+        plt.savefig("../images/rag_visualisation.png",
                     dpi=150, bbox_inches="tight")
         plt.show()

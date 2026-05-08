@@ -1,1 +1,3 @@
 .rag-venv
+.vscode
+__pycache__/
